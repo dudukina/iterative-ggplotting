@@ -1,0 +1,222 @@
+---
+title: "Live-session"
+author: "Elena Dudukina"
+date: "5/28/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+data <- read_rds(file = paste0(getwd(), "/atc_data.rds"))
+```
+
+# Tidy (non-standard) evaluation
+- Data masking
+- How code is being quoted
+- How code is being unquoted
+
+https://adv-r.hadley.nz/
+
+```{r}
+# data masking: access columns indirectly
+# regular (standard) evaluation
+data[data$ATC == "N06A" & data$gender_text == "women", ]
+
+# tidy: with masking .data[[var]] --> var
+data %>%
+  filter(ATC == "N06A", gender_text == "women")
+```
+
+```{r}
+# coding means processing the expressions
+# quoting: delaying the code execution behind the scenes
+# expr() turns things into symbols
+# sym() turns strings into symbols
+
+x <- c(2, 2, 4, 4)
+mean(x, na.rm = TRUE)
+expr(mean(x, na.rm = TRUE))
+
+expr(x)
+sym("x")
+
+# many things: exprs() is useful interactively to make a list of expressions
+rlang::exprs(x = x ^ 2, y = y ^ 3, z = z ^ 4)
+
+# shorthand for
+# list(x = expr(x ^ 2), y = expr(y ^ 3), z = expr(z ^ 4))
+
+# base version of expr() is quote()
+quote(1+2)
+```
+
+```{r}
+# unquoting: used when it's time to process the quoted expression
+# the unquote operator !! (pronounced bang-bang)
+
+xx <- expr(x + x)
+yy <- expr(y + y)
+
+expr(xx / yy)
+expr(!!xx / !!yy)
+
+# !!!, called “unquote-splice”, unquote many arguments
+manyexpr <- rlang::exprs(99, a-9, -b*2)
+
+manyexpr[[1]]
+manyexpr[[2]]
+manyexpr[[3]]
+
+expr(f(!!! manyexpr))
+
+expr(f(!!manyexpr[[1]]) + yy)
+```
+```{r}
+data %>% slice(1:100)
+
+# make a plot of N06A utilization rates in men & women separately 60-69 in 1999-2019, DK
+
+data %>% 
+  filter(region == "0", str_detect(ATC, "^N06A$"), age_cat %in% c("(30,40]", "(40,50]")) %>% 
+  ggplot(aes(x = year, y = patients_per_1000_inhabitants, color = gender)) +
+  geom_path() +
+  facet_grid(cols = vars(gender_text), rows = vars(age_cat), scales = "free", drop = T) +
+  theme_light(base_size = 14) +
+  scale_x_continuous(breaks = c(seq(1999, 2019, 10))) +
+  scale_color_manual(values = wes_palette(name = "GrandBudapest1", type = "discrete")) +
+  theme(plot.caption = element_text(hjust = 0, size = 10),
+        legend.position = "none",
+        panel.spacing = unit(0.8, "cm")) +
+  labs(y = "Patients\nper 1,000 women in the population", title = paste0("N06A utilization in DK"), subtitle = "by age categories", caption = "Source: medstat.dk")
+  
+```
+
+```{r}
+regex_antidepress <- "^N06A$"
+regex_antipsych <- "^N05A$"
+regex_anxiolyt <- "^N05B$"
+regex_sedat <- "^N05C$"
+```
+
+```{r}
+# in tidyverse instead of quoting and unquoting in 2 separate steps, it can be combined in 1 step with {{ }}, "curly-curly"
+plot_utilization <- function(.my_data, drug_regex, atc, age_var, year_var, rate_var, sex_var, title){
+  .my_data %>% 
+    filter(str_detect({{ atc }}, drug_regex), {{ age_var }} %in% c("(30,40]", "(40,50]", "(50,60]"))  %>%
+    ggplot(aes(x = {{ year_var }}, y = {{ rate_var }}, color = {{ sex_var }})) +
+    geom_path() +
+    facet_grid(cols = vars({{ sex_var }}), rows = vars({{ age_var }}), scales = "free", drop = T) +
+    theme_light(base_size = 14) +
+    scale_x_continuous(breaks = c(seq(1999, 2019, 10))) +
+    scale_color_manual(values = wes_palette(name = "GrandBudapest1", type = "discrete")) +
+    theme(plot.caption = element_text(hjust = 0, size = 10),
+          legend.position = "none",
+          panel.spacing = unit(0.8, "cm")) +
+    labs(y = "Patients\nper 1,000 women in the population", title = paste0(title, " utilization in DK"), subtitle = "by age categories", caption = "Source: medstat.dk")
+}
+
+data %>% 
+  filter(region == "0") %>% 
+  plot_utilization(.my_data = ., atc = ATC, drug_regex = regex_antipsych, age_var = age_cat, year_var = year, rate_var = patients_per_1000_inhabitants, sex_var = gender, title = "Antipsychotics")
+```
+```{r}
+plot_utilization_region <- function(.my_data, drug_regex, atc, age_var, year_var, rate_var, sex_var, title, region_var = region){
+  .my_data %>% 
+    filter({{ region_var }} == "0", str_detect({{ atc }}, drug_regex), {{ age_var }} %in% c("(30,40]", "(40,50]", "(50,60]"))  %>%
+    ggplot(aes(x = {{ year_var }}, y = {{ rate_var }}, color = {{ sex_var }})) +
+    geom_path() +
+    facet_grid(cols = vars({{ sex_var }}), rows = vars({{ age_var }}), scales = "free", drop = T) +
+    theme_light(base_size = 14) +
+    scale_x_continuous(breaks = c(seq(1999, 2019, 10))) +
+    scale_color_manual(values = wes_palette(name = "GrandBudapest1", type = "discrete")) +
+    theme(plot.caption = element_text(hjust = 0, size = 10),
+          legend.position = "none",
+          panel.spacing = unit(0.8, "cm")) +
+    labs(y = "Patients\nper 1,000 women in the population", title = paste0(title, " utilization in DK"), subtitle = "by age categories", caption = "Source: medstat.dk")
+}
+
+list_regex <- list(regex_antidepress, regex_antipsych, regex_anxiolyt, regex_sedat)
+list_title <- list("Antidepressants", "Antipsychotics", "Anxiolytics", "Sedatives")
+
+# iteration
+list_plots <- map2(list_regex, list_title, ~plot_utilization_region(.my_data = data, atc = ATC, drug_regex = ..1, age_var = age_cat, year_var = year, rate_var = patients_per_1000_inhabitants, sex_var = gender, title = ..2))
+
+list_plots
+
+# can save all with ome line
+walk2(.x = list_plots, .y = list_title, ~ggsave(filename = paste0(Sys.Date(), "-", .y, ".pdf"), plot = .x, path = getwd(), device = cairo_pdf, width = 297, height = 210, units = "mm"))
+
+list.files(getwd())
+```
+
+
+```{r pre-complex}
+#  selected region, all ages
+plot_utilization <- function(.my_data, drug_regex, atc, age_var, year_var, rate_var, sex_var, title, region_var, region_setting = "0"){
+
+  .my_data %>% 
+    filter({{ region_var }} == region_setting, str_detect({{ atc }}, drug_regex)) %>%
+    ggplot(aes(x = {{ year_var }}, y = {{ rate_var }}, color = {{ sex_var }})) +
+    geom_path() +
+    facet_grid(cols = vars({{ sex_var }}), rows = vars({{ age_var }}), scales = "free", drop = T) +
+    theme_light(base_size = 14) +
+    scale_x_continuous(breaks = c(seq(1999, 2019, 10))) +
+    scale_color_manual(values = wes_palette(name = "GrandBudapest1", type = "discrete")) +
+    theme(plot.caption = element_text(hjust = 0, size = 10),
+          legend.position = "none",
+          panel.spacing = unit(0.8, "cm")) +
+    labs(y = "Patients\nper 1,000 women in the population", title = paste0(title, " utilization in DK"), subtitle = "by age categories", caption = "Source: medstat.dk")
+}
+
+list_regex <- list(regex_antidepress, regex_antipsych, regex_anxiolyt, regex_sedat)
+list_title <- list("Antidepressants", "Antipsychotics", "Anxiolytics", "Sedatives")
+
+# iteration
+list_plots <- map2(list_regex, list_title, ~plot_utilization(.my_data = data, atc = ATC, drug_regex = ..1, age_var = age_cat, year_var = year, rate_var = patients_per_1000_inhabitants, sex_var = gender, title = ..2, region_var = region, region_setting = "5"))
+
+list_plots[[1]]
+
+# can save all with ome line
+walk2(.x = list_plots, .y = list_title, ~ggsave(filename = paste0(Sys.Date(), "-", .y, "_Syddanmark.pdf"), plot = .x, path = getwd(), device = cairo_pdf, width = 297, height = 210, units = "mm"))
+
+list.files(getwd())
+```
+
+```{r complex}
+# for all regions for selected age categories
+plot_utilization <- function(.my_data, drug_regex, atc, age_var, year_var, rate_var, sex_var, title, region_var, region_setting = "0", age_numeric, age_setting){
+
+  .my_data %>% 
+    filter({{ age_numeric }} %in% age_setting, {{ region_var }} == region_setting, str_detect({{ atc }}, drug_regex)) %>%
+    ggplot(aes(x = {{ year_var }}, y = {{ rate_var }}, color = {{ sex_var }})) +
+    geom_path() +
+    facet_grid(cols = vars({{ sex_var }}), rows = vars({{ age_var }}), scales = "free", drop = T) +
+    theme_light(base_size = 14) +
+    scale_x_continuous(breaks = c(seq(1999, 2019, 10))) +
+    scale_color_manual(values = wes_palette(name = "GrandBudapest1", type = "discrete")) +
+    theme(plot.caption = element_text(hjust = 0, size = 10),
+          legend.position = "none",
+          panel.spacing = unit(0.8, "cm")) +
+    labs(y = "Patients\nper 1,000 women in the population", title = paste0(title, " utilization in DK"), subtitle = "by age categories", caption = "Source: medstat.dk")
+}
+
+# 4 drugs for 5 regions = 20 elements
+list_region <- list(1:5) %>% map(~as.character(.x)) %>% rep(times = 4) %>% flatten()
+list_regex <- list(regex_antidepress, regex_antipsych, regex_anxiolyt, regex_sedat) %>% rep(each = 5)
+list_drug_name <- list("Antidepressants", "Antipsychotics", "Anxiolytics", "Sedatives") %>% rep(each = 5)
+list_title <- map2(list_region, list_drug_name, ~paste0("Region=", .x, ", ", .y))
+
+# iteration
+list_plots <- pmap(.l = list(list_regex, list_title, list_region), .f = ~plot_utilization(.my_data = data, atc = ATC, drug_regex = ..1, age_var = age_cat, year_var = year, rate_var = patients_per_1000_inhabitants, sex_var = gender, title = ..2, region_var = region, region_setting = ..3, age_numeric = age, age_setting = 20:60))
+
+list_plots[[1]]
+list_plots[[20]]
+
+# can save all with ome line
+walk2(.x = list_plots, .y = list_title, ~ggsave(filename = paste0(Sys.Date(), "-", .y, ".pdf"), plot = .x, path = getwd(), device = cairo_pdf, width = 297, height = 210, units = "mm"))
+
+list.files(getwd())
+```

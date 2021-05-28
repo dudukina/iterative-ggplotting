@@ -1,0 +1,189 @@
+---
+title: 'Iterative ggplotting: DCE edition'
+author: "Elena Dudukina"
+date: "5/19/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(magrittr)
+library(wesanderson)
+```
+
+```{r}
+link_list_dk <- list(
+  "1996_atc_code_data.txt" = "https://medstat.dk/da/download/file/MTk5Nl9hdGNfY29kZV9kYXRhLnR4dA==",
+  "1997_atc_code_data.txt"  = "https://medstat.dk/da/download/file/MTk5N19hdGNfY29kZV9kYXRhLnR4dA==",
+  "1998_atc_code_data.txt" = "https://medstat.dk/da/download/file/MTk5OF9hdGNfY29kZV9kYXRhLnR4dA==",
+  "1999_atc_code_data.txt" = "https://medstat.dk/da/download/file/MTk5OV9hdGNfY29kZV9kYXRhLnR4dA==",
+  "2000_atc_code_data.txt" = "https://medstat.dk/da/download/file/MjAwMF9hdGNfY29kZV9kYXRhLnR4dA==",
+  "2001_atc_code_data.txt" = "https://medstat.dk/da/download/file/MjAwMV9hdGNfY29kZV9kYXRhLnR4dA==",
+  "2002_atc_code_data.txt" = "https://medstat.dk/da/download/file/MjAwMl9hdGNfY29kZV9kYXRhLnR4dA==",
+  "2003_atc_code_data.txt" = "https://medstat.dk/da/download/file/MjAwM19hdGNfY29kZV9kYXRhLnR4dA==",
+  "2004_atc_code_data.txt" = "https://medstat.dk/da/download/file/MjAwNF9hdGNfY29kZV9kYXRhLnR4dA==",
+  "2006_atc_code_data.txt" = "https://medstat.dk/da/download/file/MjAwNl9hdGNfY29kZV9kYXRhLnR4dA==",
+  "2007_atc_code_data.txt" = "https://medstat.dk/da/download/file/MjAwN19hdGNfY29kZV9kYXRhLnR4dA==",
+  "2008_atc_code_data.txt" = "https://medstat.dk/da/download/file/MjAwOF9hdGNfY29kZV9kYXRhLnR4dA==",
+  "2009_atc_code_data.txt" = "https://medstat.dk/da/download/file/MjAwOV9hdGNfY29kZV9kYXRhLnR4dA==",
+  "2010_atc_code_data.txt" = "https://medstat.dk/da/download/file/MjAxMF9hdGNfY29kZV9kYXRhLnR4dA==",
+  "2011_atc_code_data.txt" = "https://medstat.dk/da/download/file/MjAxMV9hdGNfY29kZV9kYXRhLnR4dA==",
+  "2012_atc_code_data.txt" = "https://medstat.dk/da/download/file/MjAxMl9hdGNfY29kZV9kYXRhLnR4dA==",
+  "2013_atc_code_data.txt" = "https://medstat.dk/da/download/file/MjAxM19hdGNfY29kZV9kYXRhLnR4dA==",
+  "2014_atc_code_data.txt" = "https://medstat.dk/da/download/file/MjAxNF9hdGNfY29kZV9kYXRhLnR4dA==",
+  "2015_atc_code_data.txt" = "https://medstat.dk/da/download/file/MjAxNV9hdGNfY29kZV9kYXRhLnR4dA==",
+  "2016_atc_code_data.txt" = "https://medstat.dk/da/download/file/MjAxNl9hdGNfY29kZV9kYXRhLnR4dA==",
+  "2017_atc_code_data.txt" = "https://medstat.dk/da/download/file/MjAxN19hdGNfY29kZV9kYXRhLnR4dA==",
+  "2018_atc_code_data.txt" = "https://medstat.dk/da/download/file/MjAxOF9hdGNfY29kZV9kYXRhLnR4dA==",
+  "2019_atc_code_data.txt" = "https://medstat.dk/da/download/file/MjAxOV9hdGNfY29kZV9kYXRhLnR4dA==",
+  "atc_code_text.txt" = "https://medstat.dk/da/download/file/YXRjX2NvZGVfdGV4dC50eHQ=",
+  "atc_groups.txt" = "https://medstat.dk/da/download/file/YXRjX2dyb3Vwcy50eHQ=",
+  "population_data.txt" = "https://medstat.dk/da/download/file/cG9wdWxhdGlvbl9kYXRhLnR4dA=="
+)
+
+# ATC codes are stored in files
+seq_atc <- c(1:23)
+atc_code_data_list <- link_list_dk[seq_atc]
+```
+I will compile data on population size, which I will use to compute denominators for drug utilization per capita.
+```{r}
+# age structure data
+# parse with column type character
+age_structure <- read_delim(link_list_dk[["population_data.txt"]], delim = ";", col_names = c(paste0("V", c(1:7))), col_types = cols(V1 = col_character(), V2 = col_character(), V3 = col_character(), V4 = col_character(), V5 = col_character(), V6 = col_character(), V7 = col_character())) %>%
+  # rename and keep columns
+  select(year = V1,
+         region_text = V2,
+         region = V3,
+         gender = V4,
+         age = V5,
+         denominator_per_year = V6) %>% 
+  # human-reading friendly label on sex categories
+  mutate(
+      gender_text = case_when(
+      gender == "0" ~ "both sexes",
+      gender == "1" ~ "men",
+      gender == "2" ~ "women",
+      T ~ as.character(gender)
+    )
+  ) %>% 
+  # make numeric variables
+  mutate_at(vars(year, age, denominator_per_year), as.numeric) %>% 
+  arrange(year, age, region, gender)
+
+age_structure %>% slice(1:10)
+```
+Danish data has a handy file with all drug classes in English, which I intend to use as labels later on.
+```{r}
+eng_drug <- read_delim(link_list_dk[["atc_groups.txt"]], delim = ";", col_names = c(paste0("V", c(1:6))), col_types = cols(V1 = col_character(), V2 = col_character(), V3 = col_character(), V4 = col_character(), V5 = col_character(), V6 = col_character())) %>% 
+  # keep drug classes labels in English
+  filter(V5 == "1") %>% 
+  select(ATC = V1,
+         drug = V2,
+         unit_dk = V4)
+
+eng_drug %>% slice(1:10)
+```
+
+```{r}
+regex_antidepress <- "^N06A$"
+regex_antipsych <- "^N05A$"
+regex_anxiolyt <- "^N05B$"
+regex_sedat <- "^N05C$"
+
+# combine all ATC codes in one regex string
+all_regex <- paste(regex_antidepress, regex_antipsych, regex_anxiolyt, regex_sedat, sep = "|")
+```
+```{r}
+# ATC data
+atc_data <- map(atc_code_data_list, ~read_delim(file = .x, delim = ";", trim_ws = T, col_names = c(paste0("V", c(1:14))), col_types = cols(V1 = col_character(), V2 = col_character(), V3 = col_character(), V4 = col_character(), V5 = col_character(),V6 = col_character(), V7 = col_character(), V8 = col_character(), V9 = col_character(), V10 = col_character(), V11 = col_character(), V12 = col_character(), V13 = col_character(), V14 = col_character()))) %>% 
+  # bind data from all years
+  bind_rows() 
+
+# age categories: in 6 year bands and in each year
+age_cat_in_6 <- atc_data %>% distinct(V6) %>% filter(row_number() %in% 2:7) %>% pull()
+age_cat_in_6
+
+age_in_years <- atc_data %>% distinct(V6) %>% filter(row_number() %in% 8:103) %>% pull()
+age_in_years
+
+# clean dataset
+atc_data %<>% 
+  # rename and keep columns
+  rename(
+    ATC = V1,
+    year = V2,
+    sector = V3,
+    region = V4,
+    gender = V5, # 0 - both; 1 - male; 2 - female
+    age = V6,
+    number_of_people = V7,
+    patients_per_1000_inhabitants = V8,
+    turnover = V9,
+    regional_grant_paid = V10,
+    quantity_sold_1000_units = V11,
+    quantity_sold_units_per_unit_1000_inhabitants_per_day = V12,
+    percentage_of_sales_in_the_primary_sector = V13
+  ) %>% 
+  # clean columns names and set-up labels
+  mutate(
+    year = as.numeric(year),
+    region_text = case_when(
+      region == "0" ~ "DK",
+      region == "1" ~ "Region Hovedstaden",
+      region == "2" ~ "Region Midtjylland",
+      region == "3" ~ "Region Nordjylland",
+      region == "4" ~ "Region Sjælland",
+      region == "5" ~ "Region Syddanmark",
+      T ~ NA_character_
+    ),
+    gender_text = case_when(
+      gender == "0" ~ "both sexes",
+      gender == "1" ~ "men",
+      gender == "2" ~ "women",
+      T ~ as.character(gender)
+    ),
+    age_cats = case_when(
+      age %in% "A" ~ "A",
+      age %in% age_cat_in_6 ~ "6 years",
+      age %in% age_in_years ~ "yearly categories",
+      age %in% "T" ~ "T",
+      T ~ NA_character_
+    )
+  ) %>% 
+  mutate_at(vars(turnover, regional_grant_paid, quantity_sold_1000_units, quantity_sold_units_per_unit_1000_inhabitants_per_day, number_of_people, patients_per_1000_inhabitants), as.numeric) %>% 
+  select(-V14) %>%
+  filter(
+  age_cats == "yearly categories",
+  sector =="0",
+  gender != "0"
+) %>% 
+  filter(str_detect(ATC, all_regex)) %>% 
+  # deal with non-numeric age and re-code as numeric
+  mutate(
+    age = case_when(
+      age == "95+" ~ "95",
+      T ~ as.character(age)
+    ),
+    age = as.numeric(age)
+    ) %>% 
+  mutate(
+    age_cat = cut(x = age, breaks = c(-Inf, 10, 20, 30, 40, 50, 60, 70, 80, 90, Inf))
+) %>% 
+  left_join(age_structure) %>% 
+  group_by(ATC, year, age_cat, gender, region) %>% 
+  mutate(
+    numerator = sum(number_of_people),
+    denominator = sum(denominator_per_year),
+    patients_per_1000_inhabitants = numerator / denominator * 1000
+  ) %>% 
+  filter(row_number() == 1) %>% 
+  ungroup()
+
+atc_data %>% slice(1:10)
+```
+```{r write rds}
+write_rds(atc_data, paste0(getwd(), "/atc_data.rds"))
+```
+
+
