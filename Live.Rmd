@@ -146,7 +146,7 @@ list_plots <- map2(list_regex, list_title, ~plot_utilization_region(.my_data = d
 
 list_plots
 
-# can save all with ome line
+# can save all with one line
 walk2(.x = list_plots, .y = list_title, ~ggsave(filename = paste0(Sys.Date(), "-", .y, ".pdf"), plot = .x, path = getwd(), device = cairo_pdf, width = 297, height = 210, units = "mm"))
 
 list.files(getwd())
