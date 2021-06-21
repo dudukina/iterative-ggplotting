@@ -1,8 +1,11 @@
 ---
-title: 'Iterative ggplotting: DCE edition'
+title: 'Iterative plots with ggplot2: no more copy-pasting your code'
 author: "Elena Dudukina"
-date: "5/19/2021"
+date: "2021-03-19"
 output: html_document
+tags: ["data analysis", "Rstats", "tidyverse", "ggplot2", "epidemiology", "dataviz"]
+categories: ["R"]
+draft: false
 ---
 
 ```{r setup, include=FALSE}
@@ -155,7 +158,7 @@ atc_data %<>%
   select(-V14) %>%
   filter(
   age_cats == "yearly categories",
-  sector =="0",
+  sector == "0",
   gender != "0"
 ) %>% 
   filter(str_detect(ATC, all_regex)) %>% 
@@ -169,7 +172,9 @@ atc_data %<>%
     ) %>% 
   mutate(
     age_cat = cut(x = age, breaks = c(-Inf, 10, 20, 30, 40, 50, 60, 70, 80, 90, Inf))
-) %>% 
+) 
+
+atc_data  %<>% 
   left_join(age_structure) %>% 
   group_by(ATC, year, age_cat, gender, region) %>% 
   mutate(
@@ -177,7 +182,7 @@ atc_data %<>%
     denominator = sum(denominator_per_year),
     patients_per_1000_inhabitants = numerator / denominator * 1000
   ) %>% 
-  filter(row_number() == 1) %>% 
+  distinct(ATC, year, age_cat, gender, region, .keep_all = T) %>% 
   ungroup()
 
 atc_data %>% slice(1:10)
