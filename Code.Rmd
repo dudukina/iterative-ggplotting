@@ -1,7 +1,7 @@
 ---
 title: 'Iterative plots with ggplot2: no more copy-pasting your code'
 author: "Elena Dudukina"
-date: "2021-03-19"
+date: "2021-06-21"
 output: html_document
 tags: ["data analysis", "Rstats", "tidyverse", "ggplot2", "epidemiology", "dataviz"]
 categories: ["R"]
